@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+transformers
+sentence-transformers
+librosa
+soundfile
+llama-cpp-python==0.2.22
+chromadb
+pypdf
+TTS==0.13.3
+langchain
+fastapi[all]
+langchain-community
+numba==0.56.4
+numpy==1.23.
+huggingface_hub
