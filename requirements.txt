@@ -9,7 +9,6 @@ chromadb
 pypdf
 TTS
 langchain
-fastapi[all]
 langchain-community
 numba==0.56.4
 numpy==1.23.5
