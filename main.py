@@ -3,13 +3,12 @@ import os
 import uvicorn
 import openai
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from transformers import pipeline
-from langchain.vectorstores import Chroma
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
-from langchain.llms import LlamaCpp
+from langchain_community.llms import LlamaCpp
 from huggingface_hub import hf_hub_download
 from dotenv import load_dotenv
 from io import BytesIO
@@ -46,7 +45,7 @@ async def upload_file(file: UploadFile = File(...)):
     file_content = await file.read()
 
     # Process The File
-    pdf_loader = PyPDFLoader(BytesIO(file_content))
+    pdf_loader = PyMuPDFLoader(BytesIO(file_content))
     docs = pdf_loader.load()
 
     # Split into Chunks
