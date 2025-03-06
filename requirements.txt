@@ -4,12 +4,10 @@ transformers
 sentence-transformers
 librosa
 soundfile
-llama-cpp-python==0.2.22
 chromadb
 pypdf
-TTS
 langchain
 langchain-community
-numba==0.56.4
-numpy==1.23.5
 huggingface_hub
+openai
+llama-cpp-python==0.2.11
