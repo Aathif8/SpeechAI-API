@@ -2,7 +2,7 @@
 import os
 import uvicorn
 import openai
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -13,6 +13,8 @@ from langchain_community.llms import LlamaCpp
 from huggingface_hub import hf_hub_download
 from dotenv import load_dotenv
 import tempfile
+import io
+from faster_whisper import WhisperModel
 
 # Initializing FastAPI app
 app = FastAPI()
@@ -33,48 +35,60 @@ CHROMA_DB_PATH = tempfile.mkdtemp()
 # Load Mistral model
 llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=4096, n_threads=os.cpu_count(), f16_kv=True, verbose=False)
 
+# Load model for Embedding
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+# Whisper model for Speech-to-Text
+model = WhisperModel("small")
+
 # Global retriever
 retriever = None
 
 # Data Upload API
 @app.post("/upload_file")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     global retriever
 
     if not file:
         raise HTTPException(status_code=400, detail="No file received")
 
     # Read file content into memory
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".PDF") as temp_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
         temp_file.write(await file.read())
         temp_file_path = temp_file.name
+
+    # Process file in the background
+    background_tasks.add_task(process_file, temp_file_path)
+
+    return {"message": "File is being processed in the background!"}
+
+def process_file(temp_file_path):
+    global retriever
 
     # Process The File
     pdf_loader = PyMuPDFLoader(temp_file_path)
     docs = pdf_loader.load()
 
     # Split into Chunks
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=25)
     split_docs = text_splitter.split_documents(docs)
 
     # Store in ChromaDB
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     vectorstore = Chroma.from_documents(split_docs, embeddings, persist_directory=CHROMA_DB_PATH)
 
     # Create retriever
     retriever = vectorstore.as_retriever()
 
-    return {"message": "File Uploaded and Processed Successfully!"}
-
 # Speech-to-Text Function
 def Transcribe(audio_bytes):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-        temp_audio.write(audio_bytes)
-        temp_audio_path = temp_audio.name
-    
-    with open(temp_audio_path, "rb") as audio_file:    
-        response = openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
-    return response.text
+    # audio_file = io.BytesIO(audio_bytes)
+    # audio_file.name = "audio.mp3"
+    # response = openai.audio.transcriptions.create(model="whisper-1", file=audio_file)
+    # return response.text
+
+    audio_file = io.BytesIO(audio_bytes)
+    segments, _ = model.transcribe(audio_file, beam_size=1)
+    return " ".join({segment.text for segment in segments})
 
 # Text-To-Speech Function
 def generate_speech(text):
@@ -90,7 +104,7 @@ def generate_speech(text):
     return temp_audio_path
 
 @app.post("/process_audio/")
-async def process_audio(file: UploadFile = File(...)):
+async def process_audio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     global retriever
 
     # Save the uploaded file
@@ -103,6 +117,15 @@ async def process_audio(file: UploadFile = File(...)):
     if retriever is None:
         return {"error": "No document uploaded for response"}
 
+    response_text, output_audio = process_rag(transcribed_text)
+
+    return {
+        "transcription": transcribed_text,
+        "response": response_text,
+        "audio_file": FileResponse(output_audio, media_type="audio/mpeg", filename="response.mp3")    
+    }
+
+def process_rag(transcribed_text):
     rag_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
     response = rag_chain.invoke({"query": transcribed_text})
 
@@ -112,11 +135,7 @@ async def process_audio(file: UploadFile = File(...)):
     # Text to Speech Response
     output_audio = generate_speech(response_text)
 
-    return {
-        "transcription": transcribed_text,
-        "response": output_audio,
-        "audio_file": FileResponse(output_audio, media_type="audio/mpeg", filename="response.mp3")
-    }
+    return response_text, output_audio
 
 # Run FastAPI server
 if __name__ == "__main__":
