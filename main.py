@@ -29,11 +29,11 @@ HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 # Configuration
 # MODEL_PATH = "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
 MODEL_PATH = hf_hub_download(repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", filename="mistral-7b-instruct-v0.1.Q4_K_M.gguf", token=HF_TOKEN)
-CHROMA_DB_PATH = tempfile.mkdtemp()
+CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 
 # Load Mistral model
-llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=4096, n_threads=os.cpu_count(), f16_kv=True, verbose=False)
+llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=4096, n_threads=1, f16_kv=True, verbose=False)
 
 # Load model for Embedding
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -67,14 +67,19 @@ def process_file(temp_file_path):
 
     # Process The File
     pdf_loader = PyMuPDFLoader(temp_file_path)
-    docs = pdf_loader.load()
+    all_docs = pdf_loader.load()
 
     # Split into Chunks
+    vectorstore = None
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=25)
-    split_docs = text_splitter.split_documents(docs)
-
-    # Store in ChromaDB
-    vectorstore = Chroma.from_documents(split_docs, embeddings, persist_directory=CHROMA_DB_PATH)
+    
+    for doc in all_docs:
+        split_docs = text_splitter.split_documents([doc])
+        if vectorstore is None:
+            # Store in ChromaDB
+            vectorstore = Chroma.from_documents(split_docs, embeddings, persist_directory=CHROMA_DB_PATH, collection_name="pdf_embeddings")
+        else:
+            vectorstore.add_documents(split_docs)
 
     # Create retriever
     retriever = vectorstore.as_retriever()
@@ -104,7 +109,7 @@ def generate_speech(text):
     return temp_audio_path
 
 @app.post("/process_audio/")
-async def process_audio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def process_audio(file: UploadFile = File(...)):
     global retriever
 
     # Save the uploaded file
@@ -139,4 +144,5 @@ def process_rag(transcribed_text):
 
 # Run FastAPI server
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
