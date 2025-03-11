@@ -37,13 +37,20 @@ CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 
 # Load Mistral model
-llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=256, n_threads=1, f16_kv=True, verbose=False)
+llm = LlamaCpp(
+    model_path=MODEL_PATH, 
+    n_ctx=128, 
+    n_threads=1, 
+    f16_kv=True, 
+    verbose=False,
+    n_batch=1
+)
 
 # Load model for Embedding
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-MiniLM-L3-v2")
 
 # Whisper model for Speech-to-Text
-model = WhisperModel("tiny", compute_type="int8")
+model = WhisperModel("tiny.en", compute_type="int8")
 
 # Global retriever
 retriever = None
@@ -75,7 +82,7 @@ def process_file(temp_file_path):
 
     # Split into Chunks
     vectorstore = None
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=20)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=10)
     
     for doc in all_docs:
         split_docs = text_splitter.split_documents([doc])
@@ -92,6 +99,7 @@ def process_file(temp_file_path):
 
     # Create retriever
     retriever = vectorstore.as_retriever()
+    del all_docs, split_docs
 
 # Speech-to-Text Function
 def Transcribe(audio_bytes):
