@@ -2,6 +2,9 @@
 import os
 import uvicorn
 import openai
+import tempfile
+import io
+import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from langchain_community.vectorstores import Chroma
@@ -12,41 +15,50 @@ from langchain.chains import RetrievalQA
 from langchain_community.llms import LlamaCpp
 from huggingface_hub import hf_hub_download
 from dotenv import load_dotenv
-import tempfile
-import io
 from faster_whisper import WhisperModel
 
-# Initializing FastAPI app
-app = FastAPI()
-
-# OpenAI API Key
+# Load environment variables
 load_dotenv()
+# OpenAI API Key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 #HuggingFaceHub Key
 HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
+# Initializing FastAPI app
+app = FastAPI()
+
 # Configuration
 # MODEL_PATH = "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
-MODEL_PATH = hf_hub_download(repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", filename="mistral-7b-instruct-v0.1.Q4_K_M.gguf", token=HF_TOKEN)
+MODEL_PATH = hf_hub_download(
+    repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", 
+    filename="mistral-7b-instruct-v0.1.Q4_K_M.gguf",
+    token=HF_TOKEN
+)
 CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 
 # Load Mistral model
-llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=4096, n_threads=1, f16_kv=True, verbose=False)
+llm = LlamaCpp(
+    model_path=MODEL_PATH, 
+    n_ctx=2048, 
+    n_threads=1, 
+    f16_kv=True, 
+    verbose=False
+)
 
 # Load model for Embedding
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 # Whisper model for Speech-to-Text
-model = WhisperModel("small")
+model = WhisperModel("tiny")
 
 # Global retriever
 retriever = None
 
 # Data Upload API
 @app.post("/upload_file")
-async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(..., max_length=10*1024*1024)):
     global retriever
 
     if not file:
@@ -54,7 +66,7 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
 
     # Read file content into memory
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-        temp_file.write(await file.read())
+        shutil.copyfileobj(file.file, temp_file)
         temp_file_path = temp_file.name
 
     # Process file in the background
@@ -70,19 +82,27 @@ def process_file(temp_file_path):
     all_docs = pdf_loader.load()
 
     # Split into Chunks
-    vectorstore = None
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=25)
+    vectorstore = None
     
     for doc in all_docs:
         split_docs = text_splitter.split_documents([doc])
         if vectorstore is None:
             # Store in ChromaDB
-            vectorstore = Chroma.from_documents(split_docs, embeddings, persist_directory=CHROMA_DB_PATH, collection_name="pdf_embeddings")
+            vectorstore = Chroma.from_documents(
+                split_docs, 
+                embeddings, 
+                persist_directory=CHROMA_DB_PATH, 
+                collection_name="pdf_embeddings"
+            )
         else:
             vectorstore.add_documents(split_docs)
 
     # Create retriever
     retriever = vectorstore.as_retriever()
+
+    # Clean up temp file to save memory
+    os.remove(temp_file_path)
 
 # Speech-to-Text Function
 def Transcribe(audio_bytes):
@@ -92,7 +112,7 @@ def Transcribe(audio_bytes):
     # return response.text
 
     audio_file = io.BytesIO(audio_bytes)
-    segments, _ = model.transcribe(audio_file, beam_size=1)
+    segments, _ = model.transcribe(audio_file, beam_size=1, vad_filter=True)
     return " ".join({segment.text for segment in segments})
 
 # Text-To-Speech Function
@@ -100,7 +120,8 @@ def generate_speech(text):
     response = openai.audio.speech.create(
         model="tts-1",
         voice="alloy",
-        input=text
+        input=text,
+        strem=True
     )
     #Save audio to temp file
     temp_audio_path = "output_audio.mp3"
@@ -109,7 +130,7 @@ def generate_speech(text):
     return temp_audio_path
 
 @app.post("/process_audio/")
-async def process_audio(file: UploadFile = File(...)):
+async def process_audio(file: UploadFile = File(..., max_length=10 * 1024 * 1024)):
     global retriever
 
     # Save the uploaded file
