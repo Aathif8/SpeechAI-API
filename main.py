@@ -82,7 +82,7 @@ def process_file(temp_file_path):
     all_docs = pdf_loader.load()
 
     # Split into Chunks
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=25)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     vectorstore = None
     
     for doc in all_docs:
@@ -134,10 +134,10 @@ async def process_audio(file: UploadFile = File(..., max_length=10 * 1024 * 1024
     global retriever
 
     # Save the uploaded file
-    audio_bytes = await file.read()
+    audio_stream = file.file
 
     # Transcription of Audio
-    transcribed_text = Transcribe(audio_bytes)
+    transcribed_text = Transcribe(audio_stream)
 
     # Query LLM (RAG Model)
     if retriever is None:
