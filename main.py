@@ -40,7 +40,7 @@ CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=256, n_threads=1, f16_kv=True, verbose=False)
 
 # Load model for Embedding
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-MiniLM-L3-v2")
 
 # Whisper model for Speech-to-Text
 model = WhisperModel("tiny", compute_type="int8")
