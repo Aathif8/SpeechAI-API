@@ -144,6 +144,6 @@ def process_rag(transcribed_text):
 
 # Run FastAPI server
 if __name__ == "__main__":
-    port = os.getenv("PORT")
+    port = os.getenv("PORT", 8080)
     print(f"Running on port: {port}")
-    uvicorn.run(app, host="0.0.0.0", port=int(port) if port else 8080)
+    uvicorn.run(app, host="0.0.0.0", port=int(port))
