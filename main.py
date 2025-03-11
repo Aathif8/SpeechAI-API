@@ -28,18 +28,22 @@ HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
 # Configuration
 # MODEL_PATH = "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
-MODEL_PATH = hf_hub_download(repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", filename="tinyllama-1.1b-chat-v1.0.Q3_K_S.gguf", token=HF_TOKEN)
+MODEL_PATH = hf_hub_download(
+    repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", 
+    filename="tinyllama-1.1b-chat-v1.0.Q2_K.gguf", 
+    token=HF_TOKEN
+    )
 CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 
 # Load Mistral model
-llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=1024, n_threads=1, f16_kv=True, verbose=False)
+llm = LlamaCpp(model_path=MODEL_PATH, n_ctx=256, n_threads=1, f16_kv=True, verbose=False)
 
 # Load model for Embedding
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 # Whisper model for Speech-to-Text
-model = WhisperModel("small")
+model = WhisperModel("tiny", compute_type="int8")
 
 # Global retriever
 retriever = None
@@ -71,13 +75,18 @@ def process_file(temp_file_path):
 
     # Split into Chunks
     vectorstore = None
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=25)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=150, chunk_overlap=20)
     
     for doc in all_docs:
         split_docs = text_splitter.split_documents([doc])
         if vectorstore is None:
             # Store in ChromaDB
-            vectorstore = Chroma.from_documents(split_docs, embeddings, persist_directory=CHROMA_DB_PATH, collection_name="pdf_embeddings")
+            vectorstore = Chroma.from_documents(
+                split_docs, 
+                embeddings, 
+                persist_directory=CHROMA_DB_PATH, 
+                collection_name="pdf_embeddings"
+            )
         else:
             vectorstore.add_documents(split_docs)
 
