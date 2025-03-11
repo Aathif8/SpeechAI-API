@@ -2,8 +2,6 @@
 import os
 import uvicorn
 import openai
-import tempfile
-import io
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from langchain_community.vectorstores import Chroma
@@ -14,6 +12,8 @@ from langchain.chains import RetrievalQA
 from langchain_community.llms import LlamaCpp
 from huggingface_hub import hf_hub_download
 from dotenv import load_dotenv
+import tempfile
+import io
 from faster_whisper import WhisperModel
 
 # Initializing FastAPI app
@@ -30,27 +30,26 @@ HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 # MODEL_PATH = "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
 MODEL_PATH = hf_hub_download(
     repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", 
-    filename="tinyllama-1.1b-chat-v1.0.Q2_K.gguf", 
+    filename="mistral-7b-instruct-v0.1.Q4_K_M.gguf", 
     token=HF_TOKEN
-    )
+)
 CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
 
 # Load Mistral model
 llm = LlamaCpp(
     model_path=MODEL_PATH, 
-    n_ctx=128, 
+    n_ctx=2048, 
     n_threads=1, 
     f16_kv=True, 
-    verbose=False,
-    n_batch=1
+    verbose=False
 )
 
 # Load model for Embedding
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-MiniLM-L3-v2")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 # Whisper model for Speech-to-Text
-model = WhisperModel("tiny.en", compute_type="int8")
+model = WhisperModel("small")
 
 # Global retriever
 retriever = None
@@ -82,24 +81,18 @@ def process_file(temp_file_path):
 
     # Split into Chunks
     vectorstore = None
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=10)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=25)
     
     for doc in all_docs:
         split_docs = text_splitter.split_documents([doc])
         if vectorstore is None:
             # Store in ChromaDB
-            vectorstore = Chroma.from_documents(
-                split_docs, 
-                embeddings, 
-                persist_directory=CHROMA_DB_PATH, 
-                collection_name="pdf_embeddings"
-            )
+            vectorstore = Chroma.from_documents(split_docs, embeddings, persist_directory=CHROMA_DB_PATH, collection_name="pdf_embeddings")
         else:
             vectorstore.add_documents(split_docs)
 
     # Create retriever
     retriever = vectorstore.as_retriever()
-    del all_docs, split_docs
 
 # Speech-to-Text Function
 def Transcribe(audio_bytes):
@@ -159,7 +152,7 @@ def process_rag(transcribed_text):
 
     return response_text, output_audio
 
-# Run FastAPI server
+# # Run FastAPI server
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.getenv("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
