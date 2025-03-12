@@ -31,7 +31,7 @@ HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 MODEL_PATH = hf_hub_download(
     repo_id="Aathif/mistral-7b-instruct-v0.1.Q4_K_M.gguf", 
     filename="mistral-7b-instruct-v0.1.Q4_K_M.gguf", 
-    token=HF_TOKEN
+    use_auth_token=HF_TOKEN
 )
 CHROMA_DB_PATH = os.path.join(tempfile.gettempdir(), "chroma_db")
 
