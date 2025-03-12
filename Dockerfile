@@ -1,18 +1,13 @@
-# Use an official Python image as base
-FROM python:3.12
+FROM public.ecr.aws/lambda/python:latest
+# FROM python:3.11.7
+# WORKDIR /api/
+# COPY . .
+RUN chmod -R 777 /var/task/
 
-# Set the working directory in the container
-WORKDIR /app
-
-# Copy the project files into the container
 COPY . .
 
-# Install Dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install -r requirements.txt
 
-# Expose the port FastAPI runs on
-EXPOSE 8080
-
-# Run the FastAPI Application
-CMD [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080" ]
+# WORKDIR /
+# Set the CMD to your handler (could also be done as a parameter override outside of the Dockerfile)
+CMD ["main.handler"]

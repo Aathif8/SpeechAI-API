@@ -15,10 +15,11 @@ from dotenv import load_dotenv
 import tempfile
 import io
 from faster_whisper import WhisperModel
+from mangum import Mangum
 
 # Initializing FastAPI app
 app = FastAPI()
-
+handler = Mangum(app)
 # OpenAI API Key
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -153,6 +154,6 @@ def process_rag(transcribed_text):
     return response_text, output_audio
 
 # # Run FastAPI server
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# if __name__ == "__main__":
+#     port = int(os.getenv("PORT", 8080))
+#     uvicorn.run(app, host="0.0.0.0", port=port)
