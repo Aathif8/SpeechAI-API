@@ -13,3 +13,4 @@ openai
 llama-cpp-python==0.2.11
 python-multipart
 faster_whisper
+mangum
